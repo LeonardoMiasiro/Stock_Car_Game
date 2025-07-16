@@ -1,0 +1,347 @@
+C51 COMPILER V9.60.7.0   STOCKCAR                                                          07/15/2025 17:03:26 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE STOCKCAR
+OBJECT MODULE PLACED IN .\Objects\stockCar.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE stockCar.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\
+                    -stockCar.lst) TABS(2) OBJECT(.\Objects\stockCar.obj)
+
+line level    source
+
+   1          /*
+   2           *
+   3           8051 GLCD 128x64 Text character font
+   4           http://www.electronicWings.com
+   5           *
+   6           *  Modificado para adicionar a tela de início "Stock Car", aceleração e explosão no local.
+   7           */
+   8          
+   9          #include <reg51.h>          // Inclui o arquivo de cabeçalho reg51
+  10          #include <intrins.h>        // Inclui o arquivo de cabeçalho intrínseco
+  11          #include "Font_Header.h"
+  12          #include <stdlib.h>         // Para rand()
+  13          #include <stdio.h>          // Para a função sprintf
+  14          
+  15          #define Data_Port P3        // Define a porta de dados para o GLCD
+  16          #define ROAD_WIDTH 60
+  17          #define NO_OBSTACLE 255
+  18          #define INITIAL_DELAY 300
+  19          #define MIN_DELAY 50
+  20          #define SPEED_INCREASE 40
+  21          
+  22          sbit RS = P2^0;              // Define os pinos de bits de controle
+  23          sbit RW = P2^1;
+  24          sbit E = P2^2;
+  25          sbit CS1 = P2^3;
+  26          sbit CS2 = P2^4;
+  27          sbit RST = P2^5;
+  28          sbit RIGHT = P1^0;
+  29          sbit LEFT = P1^1;
+  30          
+  31          // --- Protótipos de Funções ---
+  32          // <<< MUDANÇA: O protótipo agora aceita coordenadas
+  33          void GLCD_DisplayExplosion(unsigned char col, unsigned char page);
+  34          void GLCD_DisplayGameOver(unsigned int points);
+  35          
+  36          void delay(unsigned int k)
+  37          {
+  38   1        unsigned int i,j;
+  39   1        for (i=0;i<k;i++)
+  40   1          for (j=0;j<112;j++);
+  41   1      }
+  42          
+  43          void GLCD_Command(char Command)
+  44          {
+  45   1        Data_Port = Command;
+  46   1        RS = 0;
+  47   1        RW = 0;
+  48   1        E = 1;
+  49   1        _nop_ ();
+  50   1        E = 0;
+  51   1        _nop_ ();
+  52   1      }
+  53          
+  54          void GLCD_Data(char Data)
+C51 COMPILER V9.60.7.0   STOCKCAR                                                          07/15/2025 17:03:26 PAGE 2   
+
+  55          {
+  56   1        Data_Port = Data;
+  57   1        RS = 1;
+  58   1        RW = 0;
+  59   1        E = 1;
+  60   1        _nop_ ();
+  61   1        E = 0;
+  62   1        _nop_ ();
+  63   1      }
+  64          
+  65          void GLCD_Init()
+  66          {
+  67   1        CS1 = 1; CS2 = 1;
+  68   1        RST = 1;
+  69   1        delay(20);
+  70   1        GLCD_Command(0x3E);
+  71   1        GLCD_Command(0x40);
+  72   1        GLCD_Command(0xB8);
+  73   1        GLCD_Command(0xC0);
+  74   1        GLCD_Command(0x3F);
+  75   1      }
+  76          
+  77          void GLCD_ClearAll()
+  78          {
+  79   1        int i,j;
+  80   1        CS1 = 1; CS2 = 1;
+  81   1        for(i=0;i<8;i++)
+  82   1        {
+  83   2          GLCD_Command((0xB8)+i);
+  84   2          for(j=0;j<64;j++)
+  85   2          {
+  86   3            GLCD_Data(0);
+  87   3          }
+  88   2        }
+  89   1        GLCD_Command(0x40);
+  90   1        GLCD_Command(0xB8);
+  91   1      }
+  92          
+  93          void GLCD_DisplayChar(char c, char col_start, unsigned char page)
+  94          {
+  95   1        unsigned char col;
+  96   1        unsigned int i = 0;
+  97   1      
+  98   1        for (i = 0; i < 5; i++)
+  99   1        {
+ 100   2          col = col_start + i;
+ 101   2          if (col >= 64)
+ 102   2          {
+ 103   3            CS1 = 0; CS2 = 1;
+ 104   3            GLCD_Command(0xB8 + page);
+ 105   3            GLCD_Command(0x40 + (col - 64));
+ 106   3          }
+ 107   2          else
+ 108   2          {
+ 109   3            CS1 = 1; CS2 = 0;
+ 110   3            GLCD_Command(0xB8 + page);
+ 111   3            GLCD_Command(0x40 + col);
+ 112   3          }
+ 113   2          GLCD_Data(font[c - 32][i]);
+ 114   2        }
+ 115   1        GLCD_Data(0x00);
+ 116   1      }
+C51 COMPILER V9.60.7.0   STOCKCAR                                                          07/15/2025 17:03:26 PAGE 3   
+
+ 117          
+ 118          void GLCD_DisplayString(char* str, char col_start, unsigned char page)
+ 119          {
+ 120   1          while (*str)
+ 121   1          {
+ 122   2              GLCD_DisplayChar(*str, col_start, page);
+ 123   2              col_start += 6;
+ 124   2              str++;
+ 125   2          }
+ 126   1      }
+ 127          
+ 128          void GLCD_DisplayCharCenter(char c, char col_start)
+ 129          {
+ 130   1          unsigned char page = 6;
+ 131   1        unsigned char col;
+ 132   1        unsigned int i = 0;
+ 133   1      
+ 134   1          for (i = 0; i < 5; i++)
+ 135   1          {
+ 136   2          col = col_start+i;
+ 137   2          if (col >= 64)
+ 138   2          {
+ 139   3            CS1 = 0; CS2 = 1;
+ 140   3            GLCD_Command(0xB8 + page);
+ 141   3            GLCD_Command(0x40 + (col - 64));
+ 142   3          }
+ 143   2          else
+ 144   2          {
+ 145   3            CS1 = 1; CS2 = 0;
+ 146   3            GLCD_Command(0xB8 + page);
+ 147   3            GLCD_Command(0x40 + col);
+ 148   3          }
+ 149   2          GLCD_Data(font[c - 32][i]);
+ 150   2          }
+ 151   1          GLCD_Data(0x00);
+ 152   1      }
+ 153          
+ 154          void GLCD_DisplayPoints(unsigned int points, char col_start, unsigned char page)
+ 155          {
+ 156   1        char buffer[4];
+ 157   1        sprintf(buffer, "%03d", points);
+ 158   1        GLCD_DisplayString(buffer, col_start, page);
+ 159   1      }
+ 160          
+ 161          void GLCD_DisplayRoad(char c, unsigned char col_start, unsigned char page)
+ 162          {
+ 163   1        GLCD_DisplayChar(c, col_start, page);
+ 164   1        GLCD_DisplayChar(c, col_start + ROAD_WIDTH, page);
+ 165   1      }
+ 166          
+ 167          // <<< MUDANÇA: Função de explosão agora recebe coordenadas e não limpa a tela.
+ 168          void GLCD_DisplayExplosion(unsigned char col, unsigned char page)
+ 169          {
+ 170   1        // Não limpa a tela para manter o cenário visível.
+ 171   1        // Apenas desenha "BOOM!" sobre a posição da colisão.
+ 172   1        // Ajustamos a posição inicial para tentar centralizar a palavra na colisão.
+ 173   1        if (col > 20) {
+ 174   2          GLCD_DisplayString("BOOM!", col - 15, page);
+ 175   2        } else {
+ 176   2          GLCD_DisplayString("BOOM!", col, page);
+ 177   2        }
+ 178   1        delay(1500); // Mostra a explosão por 1.5 segundos
+C51 COMPILER V9.60.7.0   STOCKCAR                                                          07/15/2025 17:03:26 PAGE 4   
+
+ 179   1      }
+ 180          
+ 181          void GLCD_DisplayGameOver(unsigned int points){
+ 182   1        char points_str[12];
+ 183   1        sprintf(points_str, "Points: %03d", points);
+ 184   1      
+ 185   1        GLCD_ClearAll(); // A tela de Game Over limpa o display
+ 186   1        GLCD_DisplayString("Game Over", 35, 3);
+ 187   1        GLCD_DisplayString(points_str, 29, 4);
+ 188   1      }
+ 189          
+ 190          void Start_Screen()
+ 191          {
+ 192   1        GLCD_ClearAll();
+ 193   1        GLCD_DisplayString("Stock Car", 34, 3);
+ 194   1        GLCD_DisplayString("Pressione para", 20, 5);
+ 195   1        GLCD_DisplayString("iniciar", 40, 6);
+ 196   1      
+ 197   1        while(RIGHT == 1 && LEFT == 1);
+ 198   1      
+ 199   1        GLCD_ClearAll();
+ 200   1        delay(100);
+ 201   1      }
+ 202          
+ 203          void main()
+ 204          {
+ 205   1          unsigned char position_car = 62;
+ 206   1          unsigned char position_road = 32;
+ 207   1          unsigned char page = 0;
+ 208   1          unsigned char road_positions[8];
+ 209   1          unsigned char obstacles[8];
+ 210   1          unsigned char new_pos;
+ 211   1          unsigned char obstacle_position;
+ 212   1          unsigned char obstacle_chance;
+ 213   1          int move = 0;
+ 214   1          unsigned int move_contador = 0;
+ 215   1        unsigned int points = 0;
+ 216   1          unsigned int game_delay = INITIAL_DELAY;
+ 217   1      
+ 218   1          GLCD_Init();
+ 219   1      
+ 220   1        Start_Screen();
+ 221   1      
+ 222   1          for (page = 0; page < 8; page++) {
+ 223   2              road_positions[page] = 32;
+ 224   2              obstacles[page] = NO_OBSTACLE;
+ 225   2          }
+ 226   1      
+ 227   1          srand(1);
+ 228   1      
+ 229   1          GLCD_ClearAll();
+ 230   1          GLCD_DisplayCharCenter('A', position_car);
+ 231   1      
+ 232   1          while (1)
+ 233   1          {
+ 234   2              obstacle_position = rand() % (ROAD_WIDTH - 5);
+ 235   2              obstacle_chance = rand() % 15;
+ 236   2      
+ 237   2              if (!RIGHT)
+ 238   2                  position_car += 5;
+ 239   2      
+ 240   2              if (!LEFT)
+C51 COMPILER V9.60.7.0   STOCKCAR                                                          07/15/2025 17:03:26 PAGE 5   
+
+ 241   2                  position_car -= 5;
+ 242   2      
+ 243   2              if (position_car > 127 - 5)
+ 244   2                  position_car = 127 - 5;
+ 245   2          if (position_car < 5)
+ 246   2            position_car = 0;
+ 247   2      
+ 248   2              new_pos = road_positions[0];
+ 249   2              if (move_contador == 0) {
+ 250   3                  move = rand() % 3;
+ 251   3                  move_contador = rand() % 5 + 3;
+ 252   3              }
+ 253   2      
+ 254   2              if (move == 0 && new_pos > 5)
+ 255   2                  new_pos -= 2;
+ 256   2              else if (move == 2 && new_pos < (128 - ROAD_WIDTH - 5))
+ 257   2                  new_pos += 2;
+ 258   2      
+ 259   2              move_contador--;
+ 260   2      
+ 261   2              for (page = 7; page > 0; page--) {
+ 262   3                  road_positions[page] = road_positions[page - 1];
+ 263   3                  obstacles[page] = obstacles[page - 1];
+ 264   3              }
+ 265   2      
+ 266   2              if (position_car < road_positions[6] + 5)
+ 267   2                  position_car = road_positions[6] + 5;
+ 268   2      
+ 269   2              if (position_car > road_positions[6] + ROAD_WIDTH - 5)
+ 270   2                  position_car = road_positions[6] + ROAD_WIDTH - 5;
+ 271   2      
+ 272   2              road_positions[0] = new_pos;
+ 273   2      
+ 274   2              if (obstacle_chance < 4)
+ 275   2                  obstacles[0] = new_pos + 5 + obstacle_position;
+ 276   2              else
+ 277   2                  obstacles[0] = NO_OBSTACLE;
+ 278   2      
+ 279   2              GLCD_ClearAll();
+ 280   2      
+ 281   2              for (page = 0; page < 8; page++) {
+ 282   3                  GLCD_DisplayRoad('|', road_positions[page], page);
+ 283   3                  if (obstacles[page] != NO_OBSTACLE)
+ 284   3                      GLCD_DisplayChar('X', obstacles[page], page);
+ 285   3              }
+ 286   2      
+ 287   2              GLCD_DisplayCharCenter('A', position_car);
+ 288   2      
+ 289   2              // --- MUDANÇA: Passa as coordenadas da colisão para a função de explosão ---
+ 290   2              if (obstacles[6] != NO_OBSTACLE &&
+ 291   2                  position_car >= obstacles[6] &&
+ 292   2                  position_car <= obstacles[6] + 4)
+ 293   2              {
+ 294   3            // Chama a explosão na posição do carro (position_car) e na página da colisão (6)
+ 295   3            GLCD_DisplayExplosion(position_car, 6);
+ 296   3            GLCD_DisplayGameOver(points);
+ 297   3                  while (1);
+ 298   3              }
+ 299   2      
+ 300   2          GLCD_DisplayPoints(points, 0 , 0);
+ 301   2          points++;
+ 302   2      
+C51 COMPILER V9.60.7.0   STOCKCAR                                                          07/15/2025 17:03:26 PAGE 6   
+
+ 303   2          if (points > 0 && (points % 25 == 0))
+ 304   2          {
+ 305   3            if (game_delay > MIN_DELAY)
+ 306   3            {
+ 307   4              game_delay -= SPEED_INCREASE;
+ 308   4            }
+ 309   3          }
+ 310   2      
+ 311   2          delay(game_delay);
+ 312   2          }
+ 313   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1125    ----
+   CONSTANT SIZE    =    547    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      58
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
