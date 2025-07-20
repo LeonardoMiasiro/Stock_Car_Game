@@ -1,16 +1,8 @@
-/*
- *
- 8051 GLCD 128x64 Text character font
- http://www.electronicWings.com
- *
- *  Modificado para adicionar a tela de início "Stock Car", aceleração e explosão no local.
- */
-
-#include <reg51.h>          // Inclui o arquivo de cabeçalho reg51
-#include <intrins.h>        // Inclui o arquivo de cabeçalho intrínseco
+#include <reg51.h>          // Inclui o arquivo de cabeÃ§alho reg51
+#include <intrins.h>        // Inclui o arquivo de cabeÃ§alho intrÃ­nseco
 #include "Font_Header.h"
 #include <stdlib.h>         // Para rand()
-#include <stdio.h>          // Para a função sprintf
+#include <stdio.h>          // Para a funÃ§Ã£o sprintf
 
 #define Data_Port P3        // Define a porta de dados para o GLCD
 #define ROAD_WIDTH 60
@@ -28,8 +20,6 @@ sbit RST = P2^5;
 sbit RIGHT = P1^0;
 sbit LEFT = P1^1;
 
-// --- Protótipos de Funções ---
-// <<< MUDANÇA: O protótipo agora aceita coordenadas
 void GLCD_DisplayExplosion(unsigned char col, unsigned char page);
 void GLCD_DisplayGameOver(unsigned int points);
 
@@ -164,18 +154,15 @@ void GLCD_DisplayRoad(char c, unsigned char col_start, unsigned char page)
 	GLCD_DisplayChar(c, col_start + ROAD_WIDTH, page);
 }
 
-// <<< MUDANÇA: Função de explosão agora recebe coordenadas e não limpa a tela.
 void GLCD_DisplayExplosion(unsigned char col, unsigned char page)
 {
-	// Não limpa a tela para manter o cenário visível.
-	// Apenas desenha "BOOM!" sobre a posição da colisão.
-	// Ajustamos a posição inicial para tentar centralizar a palavra na colisão.
+
 	if (col > 20) {
 		GLCD_DisplayString("BOOM!", col - 15, page);
 	} else {
 		GLCD_DisplayString("BOOM!", col, page);
 	}
-	delay(1500); // Mostra a explosão por 1.5 segundos
+	delay(1500); // Mostra a explosÃ£o por 1.5 segundos
 }
 
 void GLCD_DisplayGameOver(unsigned int points){
@@ -286,12 +273,11 @@ void main()
 
         GLCD_DisplayCharCenter('A', position_car);
 
-        // --- MUDANÇA: Passa as coordenadas da colisão para a função de explosão ---
+
         if (obstacles[6] != NO_OBSTACLE &&
             position_car >= obstacles[6] &&
             position_car <= obstacles[6] + 4)
         {
-			// Chama a explosão na posição do carro (position_car) e na página da colisão (6)
 			GLCD_DisplayExplosion(position_car, 6);
 			GLCD_DisplayGameOver(points);
             while (1);
